@@ -1,0 +1,26 @@
+---
+# Environment-wide constants and connection facts for this engagement.
+# Apply to every host regardless of which deployment targets it. Replace
+# every placeholder below with the customer's real values before use —
+# never commit real hostnames/IPs to a repo that might be shared beyond
+# this engagement.
+
+domain:         example.com
+kerberos_realm: EXAMPLE.COM
+ipa_primary:    ipa1.example.com
+gitlab_url:     https://gitlab.example.com
+vault_addr:     https://vault.example.com
+
+# Vault KV mount and environment path prefix.
+# Secrets are looked up as: <vault_kv_infra_mount>/<vault_kv_env>/<secret>
+vault_kv_infra_mount: infra
+vault_kv_env:         customer
+
+# Automation connection user — same account regardless of which deployment
+# is running.
+ansible_user: svc-ansible-user
+
+# Central syslog target, if this engagement has one.
+rsyslog_remote_host:     syslog.example.com
+rsyslog_remote_port:     514
+rsyslog_remote_protocol: tcp
