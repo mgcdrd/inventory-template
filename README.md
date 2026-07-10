@@ -8,10 +8,16 @@ topology in it.
 
 ```
 inventory-template/
-├── hosts.yml            # canonical hosts, grouped by service role — starts empty
+├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts
 └── group_vars/
-    └── all.yml           # environment-wide constants — starts with example.com placeholders
+    └── all.yml           # mirrors inventory-common's real keys, example.com placeholder values
 ```
+
+Both files intentionally have the *same shape* as the lab's real
+`inventory-common` — same group names, same nesting, same host counts —
+so starting an engagement is replacing values, not guessing what groups
+to add. Add or remove groups/hosts freely once you're past the initial
+placeholder swap; the shape is a starting point, not a requirement.
 
 `host_vars/` and additional `group_vars/<group>.yml` files aren't included —
 add them as the engagement's real hosts/groups get defined.
@@ -25,9 +31,10 @@ Starting a new engagement
    hosts this repo; the consultant is a contributor, not the owner).
 3. Replace every placeholder in `group_vars/all.yml` with the customer's real
    values.
-4. Populate `hosts.yml` with the customer's actual hosts, grouped by service
-   role (`foreman`, `dns_servers`, …) — not by which deployment
-   touches them.
+4. Replace the placeholder hostnames in `hosts.yml` with the customer's real
+   ones — same groups as the lab (`foreman`, `misc`, `k8s`, `keycloak`,
+   `kcsql`) if this engagement uses the same deployments, otherwise add or
+   remove groups/hosts to match what's actually being delivered.
 5. Add `group_vars/<group>.yml` and `host_vars/<hostname>.yml` as needed for
    per-service-role or per-host facts (firewall ports, etc.).
 
