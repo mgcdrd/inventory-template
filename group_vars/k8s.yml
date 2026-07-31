@@ -1,0 +1,45 @@
+---
+
+# ---- Kubernetes version ----
+k8s_version: "1.35"
+k8s_calico_version: "3.31.4"
+
+# ---- Network CIDRs ----
+k8s_svc_cidr: "10.0.0.0/12"
+k8s_pod_cidr: "10.16.0.0/12"
+
+# ---- Cluster identity ----
+# FQDN of the node that runs kubeadm init (first master)
+k8s_init_master: master1.example.com
+
+# DNS name for the HA control plane endpoint (keepalived VIP)
+k8s_control_plane_endpoint: kube-api.example.com
+
+k8s_keepalived_enabled: false
+
+# Bootstrap token — generate with:
+# printf '%s.%s\n' $(tr -dc a-z0-9 </dev/urandom | head -c 6) $(tr -dc a-f0-9 </dev/urandom | head -c 16)
+#k8s_init_token: "CHANGEME"
+
+# ---- Cluster group ----
+# Inventory group that gets written to /etc/hosts on every node.
+k8s_cluster_group: k8s
+
+# ---- OIDC authentication ----
+# Point at your Keycloak VIP — must be resolvable from the API server nodes.
+# keycloak_hostname and keycloak_lab_realm_name come from the Keycloak deployment.
+k8s_oidc_enabled:    true
+k8s_oidc_issuer_url: "https://infra-kc.example.com/realms/lab"
+k8s_oidc_client_id:  "kubernetes"
+
+# ---- Storage ----
+# LV name for /var — override per host if the name differs.
+k8s_var_lv: lv_var
+k8s_var_size: 256G
+
+# ---- k8s-platform: Vault HA ----
+# External hostname for the Vault instance deployed inside this cluster —
+# same hostname as vault_addr (group_vars/all.yml). deployments/k8s-platform's
+# own group_vars stays a placeholder; this is the real fact for this
+# environment.
+vault_ext_fqdn: vault.example.com

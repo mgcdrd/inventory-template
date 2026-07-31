@@ -1,0 +1,22 @@
+---
+# Real hostnames the keycloak deployment needs — same pattern as k8s.yml
+# (k8s_control_plane_endpoint, k8s_oidc_issuer_url): these are facts about
+# this environment, not deployment tuning, so they live here rather than in
+# deployments/keycloak's own group_vars, which stays generic/portable.
+
+keycloak_hostname: infra-kc.example.com
+
+postgres_host: db1.example.com
+
+# ---- keepalived ----
+# virt_ip must be a real, free IP on this cluster's network.
+keepalived_vip_for:
+  - keycloak
+
+keepalived_vrrp_instances:
+  - name: KC_INFRA
+    master_node: keycloak1.example.com
+    backup_nodes:
+      - keycloak2.example.com
+    virt_ip:
+      - 192.168.1.200                           # VIP — must be free on your network

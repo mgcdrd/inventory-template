@@ -1,0 +1,12 @@
+---
+# nginx + keepalived web proxy cluster — see deployments/webproxy.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 80
+      - 443
+    allowed_udp_ports: []
+    allowed_services: []

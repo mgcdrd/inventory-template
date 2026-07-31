@@ -1,0 +1,14 @@
+---
+# haproxy + keepalived cluster fronting the vsftp group — see
+# deployments/haproxy-lb. Client-facing ports match vsftp.yml since haproxy
+# proxies the same control + passive-data port range through to the backends.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 21
+      - "50000-50010"
+    allowed_udp_ports: []
+    allowed_services: []

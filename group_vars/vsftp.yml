@@ -1,0 +1,18 @@
+---
+# vsftpd backend servers, fronted by deployments/haproxy-lb (ftp_lb group) —
+# see deployments/vsftp. Ports still need to be open on these hosts directly
+# since haproxy proxies (not NATs) the connection through to the real backend.
+#
+# Known limitation: the firewall role has no source-IP scoping (no rich-rule
+# equivalent), so these ports are open to any source, not just ftp_lb — same
+# limitation as every other group in this inventory today, not new here.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 21
+      - "50000-50010"
+    allowed_udp_ports: []
+    allowed_services: []

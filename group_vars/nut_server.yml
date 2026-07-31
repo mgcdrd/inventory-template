@@ -1,0 +1,17 @@
+---
+# UPS-attached host (NUT primary/upsd) — see deployments/ups-monitor.
+#
+# Known limitation: the firewall role has no source-IP scoping (no rich-rule
+# equivalent), same as every other group in this inventory — 3493 is open to
+# any source at the host level. If this host sits on an isolated VLAN,
+# scoping to just the responder VM's address has to happen at the
+# router/switch ACL instead.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 3493
+    allowed_udp_ports: []
+    allowed_services: []

@@ -7,6 +7,12 @@
 
 domain:         example.com
 kerberos_realm: EXAMPLE.COM
+
+# ipa_primary and vault_addr stay FQDNs even though both are core
+# infrastructure — see the IP-addressing note below. If ipa_primary feeds
+# anything doing Kerberos/LDAPS against it (e.g. ipa-getkeytab), a bare IP
+# breaks SPN/cert hostname matching; if vault_addr's hostname carries a TLS
+# cert issued for that FQDN (e.g. behind a LoadBalancer), same problem.
 ipa_primary:    ipa1.example.com
 gitlab_url:     https://gitlab.example.com
 vault_addr:     https://vault.example.com
@@ -20,7 +26,20 @@ vault_kv_env:         customer
 # is running.
 ansible_user: svc-ansible-user
 
-# Central syslog target, if this engagement has one.
+# ---- IP addressing for core infrastructure ----
+# Core infra — hosts other things bootstrap through, especially anything
+# DNS itself depends on to recover — should be addressed by real IP, not
+# FQDN, so a DNS outage doesn't also block reaching the thing that's down.
+# Everything else in this inventory can stay on FQDNs. Apply the same
+# ansible_host-override pattern to this engagement's dns_nodes/ipa/syslog/
+# hypervisor hosts in hosts.yml once real IPs are known — see
+# inventory-common's hosts.yml for the pattern.
+
+# Central syslog target, if this engagement has one. Plain TCP, no TLS/
+# hostname verification to worry about — use the real IP once known.
 rsyslog_remote_host:     syslog.example.com
 rsyslog_remote_port:     514
 rsyslog_remote_protocol: tcp
+
+# NFS server used by any deployment mounting shared storage from it.
+nfs_server: 192.168.1.100
