@@ -16,7 +16,8 @@ inventory-template/
     ├── nut_server.yml    # firewall_zones for the UPS-attached host
     ├── ftp_lb.yml        # firewall_zones for the haproxy-lb group
     ├── vsftp.yml         # firewall_zones for the vsftp group
-    └── webproxy.yml      # firewall_zones for the webproxy group
+    ├── webproxy.yml      # firewall_zones for the webproxy group
+    └── syslog.yml        # firewall_zones for the syslog group
 ```
 
 Every file has the *same shape* as the lab's real `inventory-common` —

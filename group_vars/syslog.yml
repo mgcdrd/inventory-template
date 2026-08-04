@@ -1,0 +1,19 @@
+---
+# Central syslog aggregator group — receives forwarded logs from every host
+# whose rsyslog_remote_host (group_vars/all.yml) points here. Ports below
+# are the standard rsyslog intake — TCP alongside UDP since group_vars/
+# all.yml's lab-wide rsyslog_remote_protocol default is tcp.
+#
+# Known limitation: the firewall role has no source-IP scoping (no rich-rule
+# equivalent), so these ports are open to any source — same limitation as
+# every other group in this inventory.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 514   # rsyslog TCP intake
+    allowed_udp_ports:
+      - 514   # rsyslog UDP intake
+    allowed_services: []
