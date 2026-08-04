@@ -1,0 +1,122 @@
+---
+# syslog.example.com — central syslog aggregator, managed via
+# mgcdrd.infrabase.rsyslog. See that role's README for the full variable
+# reference, and group_vars/syslog.yml for the matching firewall ports.
+#
+# This is a worked example, not a requirement — replace rsyslog_rulesets
+# with whatever routing/retention scheme this engagement actually needs.
+# If this host also runs its own local forward-to-self loop outside the
+# role (a hand-authored rsyslog.d drop-in), override rsyslog_remote_host
+# to "" here so group_vars/all.yml's lab-wide default doesn't add a second,
+# redundant self-forward on top of it.
+rsyslog_remote_host: ""
+
+# UDP 514 is the typical pre-existing production listener; add TCP 514 too
+# if group_vars/all.yml's rsyslog_remote_protocol default is tcp for
+# clients forwarding here.
+rsyslog_listeners:
+  - address: 10.0.0.53   # replace with this host's real address
+    port: 514
+    protocol: udp
+    ruleset: Unix
+  - address: 10.0.0.53   # replace with this host's real address
+    port: 514
+    protocol: tcp
+    ruleset: Unix
+
+# Optional: deploys a templated compress/archive/purge script + daily cron
+# job. Defaults shown match a common retention policy (compress after 1
+# day, archive after 4, purge after 180) — adjust to this engagement's
+# actual requirements.
+rsyslog_log_archive_enable: true
+
+# Example ruleset: SSSD component routing, a local2.* catch-all, the
+# classic Unix facility split, and a final default bucket — first match
+# wins (exclusive: true). local3-local6 show the rsyslog_file_inputs
+# pattern for per-service log centralization (see
+# host_vars/foreman.example.com.yml and host_vars/gitlab.example.com.yml);
+# local0/local1 are free examples for other services; local7 is
+# conventionally reserved for boot.
+rsyslog_rulesets:
+  - name: Unix
+    exclusive: true
+    destinations:
+      - when: '$programname contains "sssd"'
+        type: file
+        name: SSSD
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: '$programname contains "ldap_child"'
+        type: file
+        name: SSSD_LDAP
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/ldap_child-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: '$programname contains "krb5_child"'
+        type: file
+        name: SSSD_KRB
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/krb5_child-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: '$programname contains "nss"'
+        type: file
+        name: SSSD_NSS
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/sssd_nss-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: '$programname contains "selinux_child"'
+        type: file
+        name: SSSD_SELINUX
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/selinux_child-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: '$programname contains "kcm"'
+        type: file
+        name: SSSD_KCM
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/sssd/sssd-kcm-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("authpriv.*")'
+        type: file
+        name: UNIX_LOGS_sec
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/secure-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("mail.*")'
+        type: file
+        name: UNIX_LOGS_mail
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/mail-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("cron.*")'
+        type: file
+        name: UNIX_LOGS_cron
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/cron-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("uucp.crit")'
+        type: file
+        name: UNIX_LOGS_spooler
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/spooler-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("news.crit")'
+        type: file
+        name: UNIX_LOGS_spooler   # same name as uucp.crit above — shares one template(), same file
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/spooler-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local7.*")'
+        type: file
+        name: UNIX_LOGS_boot
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/boot-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local1.5")'
+        type: file
+        name: UNIX_HTTPD_error
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/httpd-error-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local1.6")'
+        type: file
+        name: UNIX_HTTPD_access
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/httpd-access-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local2.*")'
+        type: file
+        name: SYS_PURPOSE
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local3.*")'
+        type: file
+        name: DOCKER_LOGS
+        path: "/syslog/docker/%HOSTNAME:::lowercase%/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local4.*")'
+        type: file
+        name: FOREMAN_LOGS
+        path: "/syslog/foreman/%HOSTNAME:::lowercase%/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local5.*")'
+        type: file
+        name: GITLAB_LOGS
+        path: "/syslog/gitlab/%HOSTNAME:::lowercase%/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - when: 'prifilt("local6.*")'
+        type: file
+        name: NGINX_LOGS
+        path: "/syslog/nginx/%HOSTNAME:::lowercase%/%programname%-%$YEAR%%$MONTH%%$DAY%.log"
+      - type: file    # default/else — no `when`, must be last
+        name: UNIX_LOGS_msgs
+        path: "/syslog/unix/%HOSTNAME:::lowercase%/messages-%$YEAR%%$MONTH%%$DAY%.log"

@@ -1,0 +1,31 @@
+---
+# gitlab.example.com — service-log centralization via
+# mgcdrd.infrabase.rsyslog's rsyslog_file_inputs (imfile). Applied whenever
+# a hardening deployment runs against this host (rsyslog_remote_host comes
+# from group_vars/all.yml, same as every other host) — the rest of the
+# GitLab Omnibus install stays unmanaged by Ansible.
+#
+# Paths below are best-effort from a standard GitLab Omnibus layout and have
+# not been confirmed against a live box — verify with
+# `ls /var/log/gitlab/*/` and adjust before relying on this. Omnibus's
+# runit-supervised services (gitaly, sidekiq, puma, etc.) write to a
+# `current` file, not `<name>.log`.
+rsyslog_file_inputs:
+  - path: /var/log/gitlab/nginx/gitlab_access.log
+    tag: gitlab-nginx-access
+    facility: local5
+  - path: /var/log/gitlab/nginx/gitlab_error.log
+    tag: gitlab-nginx-error
+    facility: local5
+  - path: /var/log/gitlab/gitlab-rails/production.log
+    tag: gitlab-rails
+    facility: local5
+  - path: /var/log/gitlab/gitlab-shell/gitlab-shell.log
+    tag: gitlab-shell
+    facility: local5
+  - path: /var/log/gitlab/gitaly/current
+    tag: gitaly
+    facility: local5
+  - path: /var/log/gitlab/sidekiq/current
+    tag: gitlab-sidekiq
+    facility: local5

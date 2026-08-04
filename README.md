@@ -18,6 +18,10 @@ inventory-template/
     ├── vsftp.yml         # firewall_zones for the vsftp group
     ├── webproxy.yml      # firewall_zones for the webproxy group
     └── syslog.yml        # firewall_zones for the syslog group
+└── host_vars/
+    ├── foreman.example.com.yml  # rsyslog_file_inputs worked example (Foreman/Katello)
+    ├── gitlab.example.com.yml   # rsyslog_file_inputs worked example (GitLab Omnibus)
+    └── syslog.example.com.yml   # rsyslog_listeners/rsyslog_rulesets worked example (aggregator)
 ```
 
 Every file has the *same shape* as the lab's real `inventory-common` —
@@ -26,8 +30,11 @@ an engagement is replacing values, not guessing what groups or files to
 add. Add or remove groups/hosts/files freely once you're past the initial
 placeholder swap; the shape is a starting point, not a requirement.
 
-`host_vars/` isn't included — add it as the engagement's real hosts need
-host-specific facts.
+`host_vars/` only has worked examples for hosts where `inventory-common`
+has real, nontrivial host-specific facts — not one file per host in
+`hosts.yml`. Add more as the engagement's real hosts need host-specific
+facts, and keep this in sync when `inventory-common` picks up a new
+generalizable pattern (as opposed to one-off values only that lab needs).
 
 
 Starting a new engagement
