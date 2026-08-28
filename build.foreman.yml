@@ -1,0 +1,22 @@
+---
+# Dynamic inventory source: hosts currently on Foreman's "Build" subnet.
+# Replaces a manually-maintained static `building` group — promotion off
+# this network is now just reassigning the host's subnet in Foreman; it
+# drops out of the `building` group automatically on next inventory
+# refresh. Populates the same `building` group name that
+# group_vars/building.yml already wires up for SSH ProxyJump through
+# Foreman, so nothing else needs to change.
+#
+# theforeman.foreman.foreman does NOT template its own config file (no
+# Jinja/lookup support here — verified: {{ vault_addr }} and
+# {{ lookup('env', ...) }} both passed through literally, unresolved).
+# Credentials are deliberately omitted from this file; they come from real
+# environment variables (FOREMAN_URL / FOREMAN_USER / FOREMAN_PASSWORD),
+# which the plugin's own option definitions fall back to natively. See
+# README.md for how to source those from Vault before running ansible.
+plugin: theforeman.foreman.foreman
+host_filters: 'subnet="Build"'
+groups:
+  building: true
+compose:
+  ansible_host: foreman_ip

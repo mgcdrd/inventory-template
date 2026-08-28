@@ -9,8 +9,11 @@ topology in it.
 ```
 inventory-template/
 ├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts
+├── build.foreman.yml    # dynamic inventory source — hosts on Foreman's "Build" subnet, populates the `building` group
+├── foreman-inventory-env.sh  # sources FOREMAN_URL/USER/PASSWORD from Vault for build.foreman.yml — placeholder values, fill in per engagement
 └── group_vars/
     ├── all.yml           # mirrors inventory-common's real keys, example.com placeholder values
+    ├── building.yml      # SSH ProxyJump-through-Foreman wiring for NAT'd build-network hosts
     ├── k8s.yml           # real k8s-cluster-wide facts (version, CIDRs, OIDC, vault_ext_fqdn)
     ├── keycloak.yml      # real keycloak/postgres hostnames + keepalived VIP
     ├── nut_server.yml    # firewall_zones for the UPS-attached host
@@ -46,12 +49,13 @@ Starting a new engagement
 3. Replace every placeholder in `group_vars/all.yml` with the customer's real
    values.
 4. Replace the placeholder hostnames in `hosts.yml` with the customer's real
-   ones — same groups as the lab (`foreman`, `misc`, `k8s`, `keycloak`,
-   `kc_pgsql`, `dns_nodes`, `nut_server`/`nut_client`, `proxmox_ve`,
-   `syslog`, `ipa`, `gitlab`, `gitlab_runner`, `harbor`, `webproxy`,
-   `vsftp`, `ftp_lb`) if this engagement uses the same deployments,
-   otherwise add or remove groups/hosts to match what's actually being
-   delivered.
+   ones — same groups as the lab (`foreman`, `misc`, `k8s`,
+   `keycloak`, `kc_pgsql`, `dns_nodes`, `nut_server`/`nut_client`,
+   `proxmox_ve`, `syslog`, `ipa`, `gitlab`, `gitlab_runner`, `harbor`,
+   `webproxy`, `vsftp`, `ftp_lb`) if this engagement uses the same
+   deployments, otherwise add or remove groups/hosts to match what's
+   actually being delivered. `building` isn't a static group — see "Dynamic
+   build-network source" below if this engagement needs it.
 5. Add `group_vars/<group>.yml` and `host_vars/<hostname>.yml` as needed for
    per-service-role or per-host facts (firewall ports, etc.).
 
@@ -108,3 +112,32 @@ unchecked on both sources (the default) so neither sync can delete what the
 other defined; enable **Update on Launch** so a stale cached inventory isn't
 used. The deployment's Job Template points its Inventory field at this
 combined Inventory object, not either Project's raw checkout.
+
+
+Dynamic build-network source
+------------------------------
+
+`build.foreman.yml` is a third inventory source — not a directory, a
+`theforeman.foreman.foreman` plugin config file that queries Foreman for
+hosts on its "Build" subnet and drops them into a `building` group (the
+same group `group_vars/building.yml` wires up for SSH ProxyJump through
+Foreman). If this engagement's Foreman gateways a NAT'd build network the
+same way, add it as a third comma-separated `-i` in the consuming
+deployment's `ansible.cfg`:
+
+```ini
+[defaults]
+inventory = inventory/,../../inventory-<client>/,../../inventory-<client>/build.foreman.yml
+```
+
+and add `theforeman.foreman` to that deployment's `collections/requirements.yml`.
+
+This plugin does not template its own config file, so credentials aren't in
+`build.foreman.yml` — source `foreman-inventory-env.sh` (Vault-backed,
+requires a dedicated read-only Foreman user — see that script's header)
+into your shell first. Under AWX, use its built-in Foreman/Satellite
+inventory source type instead and skip this file entirely.
+
+If this engagement doesn't use a NAT'd build network, delete
+`build.foreman.yml`, `foreman-inventory-env.sh`, and `group_vars/building.yml`,
+and don't add the third `-i` source or collection dependency.

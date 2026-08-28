@@ -1,0 +1,12 @@
+---
+# SSH path for hosts still on the NAT'd build network — Foreman is the only
+# thing with a route in, so every connection jumps through it. Resolves the
+# jump host off the `foreman` group rather than hardcoding a name, so this
+# doesn't need editing if the Foreman gateway hostname ever changes.
+#
+# StrictHostKeyChecking=accept-new: freshly-provisioned builds have no known
+# host key yet — avoids an interactive prompt hanging unattended runs
+# (AWX/CI) while still failing on a later key mismatch.
+ansible_ssh_common_args: >-
+  -o ProxyJump={{ ansible_user }}@{{ groups['foreman'] | first }}
+  -o StrictHostKeyChecking=accept-new
