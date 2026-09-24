@@ -22,7 +22,8 @@
 # per-host facts. Per-instance deployments (k8s, k8s-platform) select one
 # instance with DEPLOY_INSTANCE instead and don't use this.
 #
-# Under AWX this isn't used: add each instance as an inventory source.
+# Under AWX this isn't used: add each instance as an inventory source, and set
+# fleet_check=false on the job template so harden's fleet check is skipped.
 
 _fleet_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _fleet_env="${1:-}"
@@ -68,6 +69,9 @@ PY
 )" || { unset _fleet_root _fleet_env _fleet_base _fleet_paths; return 1; }
 
 export ANSIBLE_INVENTORY="$_fleet_paths"
+# Marker read by fleet-aware playbooks (harden's first play) to confirm this
+# script ran. Holds the env filter, or "all".
+export FLEET_ENV_LOADED="${_fleet_env:-all}"
 echo "fleet-env: ANSIBLE_INVENTORY set (${_fleet_env:-all environments})" >&2
 
 unset _fleet_root _fleet_env _fleet_base _fleet_paths

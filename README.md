@@ -179,9 +179,12 @@ ansible-playbook site.yml --limit k8s_prd_a              # ...limited to its gro
 
 Without the script a fleet run silently skips every instance host, and
 without `--limit` a fleet run also covers every host in the root `hosts.yml`.
-Check with `--list-hosts` first. Under AWX, skip the script and add each
-instance as an inventory source. The lab's own `inventory-common/README.md`
-has the full rationale and the gotchas.
+Check with `--list-hosts` first. The script exports `FLEET_ENV_LOADED`, which a
+deployment can assert on (the lab's `harden` fails an unlimited run without it;
+bypass with `-e fleet_check=false`). Under AWX, skip the script, add each
+instance as an inventory source, and set `fleet_check: false` in the job
+template's extra variables. The lab's own `inventory-common/README.md` has the
+full rationale and the gotchas.
 
 
 Dynamic build-network source
