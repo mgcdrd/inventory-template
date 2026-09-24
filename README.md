@@ -8,13 +8,15 @@ topology in it.
 
 ```
 inventory-template/
-├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts
+├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts (k8s hosts excluded, see instances/)
+├── instances/
+│   └── k8s/example/     # one directory per k8s cluster: hosts.yml + group_vars/k8s_<name>/ — copy per additional cluster
+├── fleet-env.sh         # source it from a deployment dir to load every instance for fleet runs (harden etc.)
 ├── build.foreman.yml    # dynamic inventory source — hosts on Foreman's "Build" subnet, populates the `building` group
 ├── foreman-inventory-env.sh  # sources FOREMAN_URL/USER/PASSWORD from Vault for build.foreman.yml — placeholder values, fill in per engagement
 └── group_vars/
     ├── all.yml           # mirrors inventory-common's real keys, example.com placeholder values
     ├── building.yml      # SSH ProxyJump-through-Foreman wiring for NAT'd build-network hosts
-    ├── k8s.yml           # real k8s-cluster-wide facts (version, CIDRs, OIDC, vault_ext_fqdn)
     ├── keycloak.yml      # real keycloak/postgres hostnames + keepalived VIP
     ├── nut_server.yml    # firewall_zones for the UPS-attached host
     ├── ftp_lb.yml        # firewall_zones for the haproxy-lb group
@@ -49,7 +51,7 @@ Starting a new engagement
 3. Replace every placeholder in `group_vars/all.yml` with the customer's real
    values.
 4. Replace the placeholder hostnames in `hosts.yml` with the customer's real
-   ones — same groups as the lab (`foreman`, `misc`, `k8s`,
+   ones — same groups as the lab (`foreman`, `misc`,
    `keycloak`, `kc_pgsql`, `dns_nodes`, `nut_server`/`nut_client`,
    `proxmox_ve`, `syslog`, `ipa`, `gitlab`, `gitlab_runner`, `harbor`,
    `webproxy`, `vsftp`, `ftp_lb`) if this engagement uses the same
@@ -95,23 +97,91 @@ repo as a sibling of `deployments/`, that's `../../`, matching
 `inventory-common`'s layout in the lab):
 
 ```
-ansible-playbook -i inventory/ -i ../../inventory-<client>/ site.yml
+ansible-playbook -i inventory/ -i ../../inventory-<client>/hosts.yml site.yml
 ```
 
 or via `ansible.cfg` — **comma-separated**, not colon:
 
 ```ini
 [defaults]
-inventory = inventory/,../../inventory-<client>/
+inventory = inventory/,../../inventory-<client>/hosts.yml
 ```
 
+Point at `hosts.yml`, not the directory: a directory source is parsed
+recursively and would load every `instances/` directory at once. The file
+source still picks up the adjacent `group_vars/` and `host_vars/`.
+
 **AWX**: one Inventory object per deployment, with two SCM Inventory Sources
-— this repo, and the deployment's own Project pointed at its local
-`inventory/` subdirectory. Leave **Overwrite** and **Overwrite Variables**
+— this repo (source path `hosts.yml`, not the directory), and the
+deployment's own Project pointed at its local `inventory/` subdirectory. Leave **Overwrite** and **Overwrite Variables**
 unchecked on both sources (the default) so neither sync can delete what the
 other defined; enable **Update on Launch** so a stale cached inventory isn't
 used. The deployment's Job Template points its Inventory field at this
 combined Inventory object, not either Project's raw checkout.
+
+
+Multiple instances
+-------------------
+
+A service that runs more than once (several k8s clusters, one per
+environment) gets one directory per instance under
+`instances/<service>/<name>/`, and its hosts stay out of the root `hosts.yml`.
+Start by copying `instances/k8s/example/` and renaming `k8s_example` to
+`k8s_<name>` in `hosts.yml` and `group_vars/`.
+
+```
+instances/<service>/<name>/
+├── hosts.yml                    # only this instance's hosts
+└── group_vars/
+    ├── <service>_<name>/        # instance_name + this instance's vars
+    └── <role group>/            # optional, e.g. k8smasters/keepalived.yml
+```
+
+Rules:
+
+1. Load exactly one instance per run. Ansible merges every loaded source into
+   one group, so two loaded at once mix their nodes and vars.
+2. List each node in the instance group (`k8s_<name>`) and again in its role
+   group (`k8smasters`/`k8sworkers`). Don't nest role groups under the
+   instance group.
+3. Put `instance_name` and instance-specific vars in
+   `group_vars/<service>_<name>/`, never on the shared group (`k8s`) — a var
+   on the shared group is overwritten by whichever instance loads last.
+   Facts every instance shares stay in the root `group_vars/<group>.yml`.
+4. Use underscores in group names (`k8s_prod_a`). Name instances
+   `<env>_<set>` (`dev_a`, `prd_b`) where a service runs in several
+   environments.
+5. Secrets point at a per-instance Vault path. Never a literal.
+
+**Per-instance deployments** (`k8s`, `k8s-platform`): the deployment's
+`ansible.cfg` builds the path from an env var, and its first play runs
+`mgcdrd.infrabase.instance_guard`, which fails if no instance, or more than
+one, is loaded:
+
+```ini
+inventory = inventory/,../../inventory-<client>/hosts.yml,../../inventory-<client>/instances/k8s/${DEPLOY_INSTANCE}
+```
+
+```
+DEPLOY_INSTANCE=prd_a ansible-playbook site.yml
+```
+
+**Fleet deployments** (`harden`, `vm-migrate`, `proxmox-vm-manage` — `hosts: all`)
+source `fleet-env.sh` from the deployment directory, which appends every
+instance directory to that deployment's inventory. Edit nothing per instance.
+
+```
+source ../../inventory-<client>/fleet-env.sh             # every instance
+source ../../inventory-<client>/fleet-env.sh dev         # dev and dev_*
+source ../../inventory-<client>/fleet-env.sh prd_a       # one instance...
+ansible-playbook site.yml --limit k8s_prd_a              # ...limited to its group
+```
+
+Without the script a fleet run silently skips every instance host, and
+without `--limit` a fleet run also covers every host in the root `hosts.yml`.
+Check with `--list-hosts` first. Under AWX, skip the script and add each
+instance as an inventory source. The lab's own `inventory-common/README.md`
+has the full rationale and the gotchas.
 
 
 Dynamic build-network source

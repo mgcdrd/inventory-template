@@ -1,0 +1,27 @@
+---
+# FreeIPA servers (see deployments/ipa). FreeIPA is deployed WITHOUT
+# integrated DNS, so port 53 is deliberately absent — an external DNS server
+# stays authoritative. Ports are applied by deployments/harden
+# (mgcdrd.infrabase.firewall); deployments/ipa itself leaves firewalld alone
+# (ipaserver_setup_firewalld: false).
+#
+# Known limitation: the firewall role has no source-IP scoping, so these
+# ports are open to any source — same as every other group in this inventory.
+
+firewall_zones:
+  - name: public
+    interfaces: []
+    allowed_tcp_ports:
+      - 22
+      - 80     # HTTP  — enrolment, CA, replication
+      - 443    # HTTPS — web UI, API, enrolment, replication
+      - 389    # LDAP  — StartTLS
+      - 636    # LDAPS
+      - 88     # Kerberos
+      - 464    # kpasswd / kadmin
+      - 749    # kadmin (ipa-replica-manage, kpasswd admin)
+    allowed_udp_ports:
+      - 88     # Kerberos
+      - 464    # kpasswd
+      - 123    # NTP (chrony, configured by ipa-server-install)
+    allowed_services: []

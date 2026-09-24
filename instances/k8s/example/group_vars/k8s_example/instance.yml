@@ -1,0 +1,4 @@
+---
+# Read by mgcdrd.infrabase.instance_guard to confirm exactly one instance
+# is loaded. Must be unique per instance directory.
+instance_name: k8s_example
