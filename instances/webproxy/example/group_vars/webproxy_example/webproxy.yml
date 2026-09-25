@@ -1,0 +1,23 @@
+---
+
+# ---- keepalived ----
+keepalived_vrrp_instances:
+  - name: VI_WEBPROXY
+    master_node: proxy1.example.com
+    backup_nodes:
+      - proxy2.example.com
+    # Placeholder — must be a real, free IP on this cluster's network
+    # before first run.
+    virt_ip:
+      - 192.168.1.50/24
+
+# ---- nginx ----
+# No server blocks defined yet. Schema and the devops-owned proxy file split
+# are in deployments/webproxy's inventory/group_vars/all/main.yml and the
+# mgcdrd.infrasvc.nginx README.
+nginx_server_blocks: []
+
+# ---- acme_sh issuer (only with nginx_ssl_provider: acme_sh) ----
+# Literal hostname — never groups.webproxy | first, since inventory
+# reordering must never silently move who issues.
+# acme_sh_issuer_host: proxy1.example.com

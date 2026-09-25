@@ -8,9 +8,10 @@ topology in it.
 
 ```
 inventory-template/
-├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts (k8s hosts excluded, see instances/)
+├── hosts.yml            # mirrors inventory-common's real group structure, example.com placeholder hosts (k8s and webproxy hosts excluded, see instances/)
 ├── instances/
-│   └── k8s/example/     # one directory per k8s cluster: hosts.yml + group_vars/k8s_<name>/ — copy per additional cluster
+│   ├── k8s/example/     # one directory per k8s cluster: hosts.yml + group_vars/k8s_<name>/ — copy per additional cluster
+│   └── webproxy/example/ # same for a webproxy pair: hosts.yml + group_vars/webproxy_<name>/
 ├── fleet-env.sh         # source it from a deployment dir to load every instance for fleet runs (harden etc.)
 ├── build.foreman.yml    # dynamic inventory source — hosts on Foreman's "Build" subnet, populates the `building` group
 ├── foreman-inventory-env.sh  # sources FOREMAN_URL/USER/PASSWORD from Vault for build.foreman.yml — placeholder values, fill in per engagement
@@ -169,7 +170,7 @@ Root `host_vars/` also applies to instance hosts, but prefer the instance's own
 `host_vars/` so the instance stays self-contained and removing it leaves no
 orphaned host files.
 
-**Per-instance deployments** (`k8s`, `k8s-platform`): the deployment's
+**Per-instance deployments** (`k8s`, `k8s-platform`, `webproxy`): the deployment's
 `ansible.cfg` builds the path from an env var, and its first play runs
 `mgcdrd.infrabase.instance_guard`, which fails if no instance, or more than
 one, is loaded:
