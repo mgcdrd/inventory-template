@@ -132,9 +132,10 @@ Start by copying `instances/k8s/example/` and renaming `k8s_example` to
 ```
 instances/<service>/<name>/
 ├── hosts.yml                    # only this instance's hosts
-└── group_vars/
-    ├── <service>_<name>/        # instance_name + this instance's vars
-    └── <role group>/            # optional, e.g. k8smasters/keepalived.yml
+├── group_vars/
+│   ├── <service>_<name>/        # instance_name + this instance's vars
+│   └── <role group>/            # optional, e.g. k8smasters/keepalived.yml
+└── host_vars/<fqdn>.yml         # optional, one host in this instance
 ```
 
 Rules:
@@ -152,6 +153,21 @@ Rules:
    `<env>_<set>` (`dev_a`, `prd_b`) where a service runs in several
    environments.
 5. Secrets point at a per-instance Vault path. Never a literal.
+
+Where a variable goes — widest scope where it's correct for every host in it;
+narrower scopes override wider ones:
+
+| Scope | Location |
+|---|---|
+| Every instance of the service, correct for any deployment | root `group_vars/<service>.yml` |
+| Only one deployment cares, same for every instance | that deployment's own `inventory/group_vars/<service>/` |
+| One instance | `instances/<service>/<name>/group_vars/<service>_<name>/` |
+| One host in an instance | that instance's `host_vars/<fqdn>.yml` |
+| One host outside any instance | root `host_vars/<fqdn>.yml` |
+
+Root `host_vars/` also applies to instance hosts, but prefer the instance's own
+`host_vars/` so the instance stays self-contained and removing it leaves no
+orphaned host files.
 
 **Per-instance deployments** (`k8s`, `k8s-platform`): the deployment's
 `ansible.cfg` builds the path from an env var, and its first play runs
