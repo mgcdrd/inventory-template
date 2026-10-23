@@ -1,0 +1,24 @@
+---
+# Connection settings for the mgcdrd.proxmox roles (deployments/proxmox-vm-manage
+# and deployments/vm-migrate). The collection has no defaults for these.
+
+# Any node manages the whole cluster through its API (state is synced
+# cluster-wide by corosync/pmxcfs), so one fixed node works regardless of
+# which node hosts the VM being changed. The password below is looked up per
+# node because root@pam is node-local, not cluster-wide.
+proxmox_api_host: proxmox1.example.com
+proxmox_api_user: root@pam
+proxmox_validate_certs: false
+
+# Password auth — reuses the <env>/proxmox/root secret the foreman deployment
+# reads (one pve<N>_password key per node).
+proxmox_api_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/proxmox/root', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret[proxmox_api_host.split('.')[0] + '_password'] }}"
+
+# API token auth (scoped, revocable). Optional for proxmox-vm-manage; REQUIRED
+# by vm-migrate, whose guest-agent-exec phase (proxmox_guest_exec) asserts on
+# it because ansible.builtin.uri can't do PVE's login-ticket + CSRF flow.
+# Mint a token in PVE (Datacenter -> Permissions -> API Tokens) with at least
+# VM.Config.Disk, VM.Config.Network, VM.Monitor and VM.Snapshot on the relevant
+# path and store it at <env>/proxmox/api_token, then uncomment.
+# proxmox_api_token_id:     "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/proxmox/api_token', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.token_id }}"
+# proxmox_api_token_secret: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/proxmox/api_token', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.token_secret }}"

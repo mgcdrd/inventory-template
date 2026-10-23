@@ -1,0 +1,22 @@
+---
+# deployments/vm-migrate: moves a VM off Foreman's build network onto its
+# production subnet. Per-VM values (vm_migrate_*) go in host_vars/<fqdn>/.
+# The proxmox_api_* connection settings are in proxmox.yml.
+
+# ---- phpIPAM ----
+# API application "ansible" must exist in phpIPAM under Administration > API
+# first — see mgcdrd.infrasvc.phpipam_config's README.
+vm_migrate_phpipam_url:    "https://dns1.{{ domain }}"   # confirm against your actual phpIPAM URL
+vm_migrate_phpipam_app_id: "ansible"
+# Dedicated phpIPAM user for the "ansible" API application (not a personal
+# login). Path not populated yet as of 2026-09-02.
+vm_migrate_phpipam_username: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/phpipam/api', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.username }}"
+vm_migrate_phpipam_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/phpipam/api', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.password }}"
+
+# ---- Foreman ----
+vm_migrate_foreman_url: "https://foreman.{{ domain }}"
+# Needs a dedicated identity scoped to Hosts edit. Do NOT reuse the read-only
+# svc-ansible-inventory identity (see foreman-inventory-env.sh — intentionally
+# Viewer-scoped) or an admin account. Path not populated yet as of 2026-09-02.
+vm_migrate_foreman_username: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/foreman', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.write_username }}"
+vm_migrate_foreman_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/foreman', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.write_password }}"

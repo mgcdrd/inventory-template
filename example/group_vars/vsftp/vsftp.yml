@@ -1,0 +1,43 @@
+---
+# Secured vsftpd backends — see deployments/vsftp. Passive-mode settings
+# (vsftp_pasv_*) are in group_vars/ftp/ftp.yml.
+
+# ---- Shared storage ----
+# Both nodes chroot into the same NFS-mounted root so they see the same files
+# regardless of which one a client lands on. Flat/shared: every local user
+# lands in the same tree, no per-user isolation.
+vsftp_shared_storage: nfs   # nfs | local
+# Placeholders — set to the real NFS server/export before first run.
+vsftp_nfs_server: "192.168.1.100"
+vsftp_nfs_path:   "/exports/vsftp"
+vsftp_nfs_mount:  /srv/vsftp/shared
+vsftp_nfs_opts:   "vers=3,_netdev"
+
+# ---- Access control: local users only, jailed into the shared storage root ----
+vsftp_anonymous_enable: "NO"
+vsftp_local_enable: "YES"
+vsftp_write_enable: "YES"
+vsftp_chroot_local_user: "YES"
+vsftp_local_root: "{{ vsftp_nfs_mount }}"
+
+# The vsftpd package installs /etc/pam.d/vsftpd on both Debian and Rocky; the
+# role's own default ('ftp') matches neither, so local logins fail without this.
+vsftp_pam_service_name: vsftpd
+
+# ---- Standalone mode (systemd-managed) ----
+vsftp_background: "NO"
+vsftp_listen: "YES"
+
+# ---- TLS: self-signed via ssl_scripting (see site.yml); force SSL for logins and data ----
+vsftp_ssl_enable: "YES"
+vsftp_force_local_logins_ssl: "YES"
+vsftp_force_local_data_ssl: "YES"
+vsftp_rsa_cert_file: /etc/vsftpd/ssl_scripting/ssl-dummy.crt
+vsftp_rsa_private_key_file: /etc/vsftpd/ssl_scripting/ssl-dummy.key
+
+# ---- Logging ----
+vsftp_xferlog_enable: "YES"
+vsftp_log_ftp_protocol: "YES"
+
+# ---- SELinux (RedHat only, no-op on Debian) ----
+vsftp_selinux_register_pasv_ports: true

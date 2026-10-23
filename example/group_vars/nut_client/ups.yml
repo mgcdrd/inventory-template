@@ -1,0 +1,43 @@
+---
+# Responder VM — watches the UPS host's upsd remotely (NUT secondary/upsmon).
+# ups_host resolves dynamically to whatever host is in the nut_server group,
+# so it doesn't need the UPS host's address duplicated here. See the design doc:
+# wiki enterpriseServices/Power/UPS_NUT_Monitoring
+
+nut_client_monitors:
+  - ups_name:         "{{ ups_shed_ups_name }}"
+    ups_host:         "{{ ups_shed_ups_host }}"
+    power_value:      1
+    monuser:          monuser
+    # Same secret as nut_server_monuser_password: both sides authenticate as
+    # the same monuser account.
+    monuser_password: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/nut', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.monuser_password }}"
+    role:             secondary
+
+# ---- ups_shed: threshold-polling tiered shutdown ----
+# Hook nut_client's NOTIFYCMD into ups_shed's timer start/stop.
+nut_client_notify_hook: /usr/local/bin/ups-shed-notify-hook.sh
+
+ups_shed_ups_name: "{{ nut_server_ups_name | default('apc') }}"
+ups_shed_ups_host: "{{ hostvars[groups['nut_server'][0]]['ansible_host'] | default(groups['nut_server'][0]) }}"
+
+# k8s_control_plane_endpoint comes from group_vars/k8s/k8s.yml —
+# pulled via hostvars since this host isn't itself in the k8s group.
+ups_shed_k8s_api: "https://{{ hostvars[groups['k8smasters'][0]]['k8s_control_plane_endpoint'] }}:6443"
+
+# Tiered shutdown lists. These encode a site's tiering decisions and must be
+# re-derived per engagement; every host must be enrolled and covered by the
+# ups-shutdown-targets hostgroup/sudorule/hbacrule. Placeholders:
+ups_shed_k8s_workers:
+  - worker1.example.com
+  - worker2.example.com
+
+ups_shed_tier1_guests:
+  - guest1.example.com
+  - guest2.example.com
+ups_shed_tier1_hypervisor: proxmox2.example.com
+
+ups_shed_tier2_guests:
+  - guest3.example.com
+  - guest4.example.com
+ups_shed_tier2_hypervisor: proxmox3.example.com

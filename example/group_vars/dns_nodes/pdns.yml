@@ -1,0 +1,26 @@
+---
+
+# ---- pdns_phpipam — shared across all three nodes ----
+
+pdns_phpipam_domain:        "example.com"
+pdns_phpipam_domain_ip_rev: "192.168.1"
+
+# ---- Galera ----
+# All nodes participate in the same cluster. The cluster address is the same
+# on all nodes in steady-state operation.
+#
+# Initial bootstrap (first deploy only):
+#   ansible-playbook site.yml --tags pdns --limit dns1.example.com \
+#     -e "pdns_phpipam_galera_cluster_address=gcomm://"
+#   ansible-playbook site.yml --tags pdns --limit dns2.example.com,dns3.example.com
+#
+# The gcomm:// override is only needed for the very first node start.
+# Once dns2 and dns3 have joined, all nodes use the full address list.
+
+pdns_phpipam_galera_enabled:      true
+pdns_phpipam_galera_cluster_name: "dns_galera"
+pdns_phpipam_galera_cluster_address: "gcomm://192.168.1.17,192.168.1.18,192.168.1.19"
+
+# SST credentials — supply via Vault
+pdns_phpipam_galera_sst_user:     "sst_user"
+pdns_phpipam_galera_sst_password: "{{ vault_pdns_galera_sst_password }}"

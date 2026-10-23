@@ -1,0 +1,21 @@
+---
+
+# ---- pdns_phpipam — full stack (dns1, dns2 only) ----
+
+# Credentials — supply via Vault. Leave as "" to auto-generate.
+pdns_phpipam_mariadb_root_passwd: "{{ vault_pdns_mariadb_root_passwd | default('') }}"
+pdns_phpipam_mariadb_pdns_passwd: "{{ vault_pdns_mariadb_pdns_passwd | default('') }}"
+pdns_phpipam_mariadb_ipam_passwd: "{{ vault_pdns_mariadb_ipam_passwd | default('') }}"
+pdns_phpipam_auth_api_key:        "{{ vault_pdns_auth_api_key        | default('') }}"
+pdns_phpipam_auth_web_passwd:     "{{ vault_pdns_auth_web_passwd     | default('') }}"
+pdns_phpipam_recursor_api_key:    "{{ vault_pdns_recursor_api_key    | default('') }}"
+pdns_phpipam_dnsdist_api_key:     "{{ vault_pdns_dnsdist_api_key     | default('') }}"
+pdns_phpipam_dnsdist_web_passwd:  "{{ vault_pdns_dnsdist_web_passwd  | default('') }}"
+
+# Password for the keepalived_chk MariaDB user ('keepalived_chk'@'127.0.0.1').
+# Used only by the Galera sync check script — supply via Vault.
+keepalived_chk_password: "{{ vault_pdns_keepalived_chk_password }}"
+
+# Expose the pdns-auth API on the host so the pdns_records role can reach it
+# from an Ansible controller that is not the Docker host.
+pdns_phpipam_auth_api_port: 8081

@@ -1,0 +1,10 @@
+---
+
+# Deploy only the MariaDB/Galera container — no pdns-auth, recursor, dnsdist,
+# or phpIPAM. This node exists solely to provide a third Galera quorum member.
+pdns_phpipam_mariadb_only: true
+
+# MariaDB root password — supply via Vault or leave "" to auto-generate.
+# After the initial SST, this node's root password will be overwritten with
+# dns1's password. Set it to match if running the role after SST has completed.
+pdns_phpipam_mariadb_root_passwd: "{{ vault_pdns_mariadb_root_passwd | default('') }}"

@@ -1,0 +1,84 @@
+---
+# Infrastructure Keycloak (deployments/keycloak): keycloak nodes + PostgreSQL.
+# Only values the plays or tasks read outside a role, or that differ from the
+# role defaults, are set here. Everything else uses the mgcdrd.infrasvc.keycloak
+# and keycloak_config role defaults. keycloak_hostname, postgres_host and the
+# keepalived VIP are in group_vars/keycloak.yml.
+
+# docker (Compose stacks) | native (PGDG PostgreSQL + Keycloak tarball under
+# systemd, for hosts where Docker is unwanted, e.g. unprivileged LXC).
+# Lab runs docker; a customer LXC-based install sets native.
+keycloak_install_method: docker
+
+# ---- PostgreSQL ----
+# local: /srv/docker/pgsql/data on the pgsql host | nfs: pgsql_nfs_mount/data
+pgsql_storage: local
+pgsql_nfs_mount: /mnt/pgsql                     # only used when pgsql_storage: nfs
+postgres_image:   postgres
+postgres_version: "18"
+postgres_port:    5432
+postgres_db:      keycloak
+
+# Credentials come from AWX/Vault (role default names).
+keycloak_db_user:     "{{ vault_keycloak_db_user }}"
+keycloak_db_password: "{{ vault_keycloak_db_password }}"
+# Bootstrap account that creates the database and grants keycloak_db_user
+# scoped access (separation of duties). Docker mode only; native mode
+# bootstraps as the OS 'postgres' role over local peer auth.
+postgres_admin_password: "{{ vault_postgres_admin_password }}"
+
+# ---- Shared storage (docker mode) ----
+# nfs needs keycloak_nfs_server + keycloak_nfs_path; local keeps data under
+# keycloak_base_dir/data on each node.
+keycloak_shared_storage: nfs
+keycloak_nfs_server: "192.168.1.100"            # placeholder
+keycloak_nfs_path:   "/exports/keycloak"        # placeholder
+
+# ---- TLS via acme_sh ----
+# Issue TLS from the roles (keycloak + native postgresql). false when TLS is
+# terminated upstream or certs are placed by other means.
+keycloak_manage_tls: true
+keycloak_acme_challenge:      dns_cf            # dns_cf (lab) | dns_pdns (customer PowerDNS)
+keycloak_acme_complete_chain: false             # true when rooting a Google Public CA chain
+# keycloak_acme_root_cn:          "GTS Root R1"
+# keycloak_acme_root_fingerprint: "D9:47:43:2A:BD:E7:B7:FA:90:FC:2E:6B:59:10:1B:12:80:E0:E1:C7:E4:E4:0F:A3:C6:88:7F:FF:57:A7:F4:CF"
+# keycloak_acme_root_urls:        ["https://pki.goog/repo/certs/gtsr1.pem"]
+acme_sh_email:         "admin@example.com"      # ACME account registration email
+acme_sh_ca:            letsencrypt
+acme_sh_cf_token:      "{{ vault_acme_cf_token }}"
+acme_sh_cert_base_dir: /etc/ssl/acme            # where issued certs land
+
+# ---- Native mode only (ignored under docker) ----
+# keycloak_release:             "26.4.0"         # full X.Y.Z — the GitHub release tag
+# keycloak_java_package_method: distro           # distro | adoptium
+# keycloak_truststore_files:                     # CA bundles for the DB and LDAP
+#   - { name: db-ca.pem, content: "{{ vault_keycloak_db_ca }}" }
+#   - { name: ldap-ca.pem, content: "{{ vault_keycloak_ldap_ca }}" }
+
+# CIDRs of the Keycloak nodes, used to build pg_hba.conf for the native
+# database. Keep it tight — one /32 per node, application role only.
+keycloak_pgsql_allowed_hosts: []                # e.g. ["10.0.0.11/32", "10.0.0.12/32"]
+
+# pg_hba.conf for the native database, derived from keycloak_pgsql_allowed_hosts.
+_kc_pgsql_hba_base:
+  - { type: local, database: all, user: all, method: peer }
+  - { type: host, database: all, user: all, address: "127.0.0.1/32", method: scram-sha-256 }
+  - { type: host, database: all, user: all, address: "::1/128", method: scram-sha-256 }
+
+_kc_pgsql_hba_entries: >-
+  {{ _kc_pgsql_hba_base + (keycloak_pgsql_allowed_hosts
+     | map('regex_replace', '^(.+)$',
+           '{"type": "host", "database": "' ~ postgres_db ~ '", "user": "' ~ keycloak_db_user
+           ~ '", "address": "\1", "method": "scram-sha-256"}')
+     | map('from_json') | list) }}
+
+# ---- keycloak_config: LDAP federation and realm admins ----
+# Placeholders — point at the real directory.
+keycloak_ldap_url:        "ldap://dc1.example.com"
+keycloak_ldap_bind_dn:    "CN=svc-keycloak,OU=ServiceAccounts,DC=example,DC=com"
+keycloak_ldap_users_dn:   "OU=Users,DC=example,DC=com"
+keycloak_ldap_groups_dn:  "OU=Groups,DC=example,DC=com"
+keycloak_master_admin_groups:
+  - keycloak-admins             # LDAP group whose members get Keycloak admin
+keycloak_lab_admin_groups:
+  - k8s-admins                  # LDAP group whose members get k8s cluster-admin

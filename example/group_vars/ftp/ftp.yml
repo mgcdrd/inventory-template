@@ -1,0 +1,11 @@
+---
+# Passive-mode settings shared by the vsftp backends and the haproxy-lb pair
+# in front of them. vsftpd advertises vsftp_pasv_address to clients, so it
+# must be the ftp_lb VIP, not either backend's own address (a PASV reply with a
+# backend IP makes clients bypass the load balancer). haproxy binds the same
+# port range and keepalived holds the same VIP; both read these values.
+vsftp_pasv_enable: "YES"
+vsftp_pasv_min_port: 50000
+vsftp_pasv_max_port: 50010
+# Placeholder — must be a real, free IP on the ftp_lb network before first run.
+vsftp_pasv_address: "192.168.1.60"

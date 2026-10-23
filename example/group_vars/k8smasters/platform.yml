@@ -1,0 +1,285 @@
+---
+
+# kubernetes.core modules need this pinned rather than auto-detected on
+# these hosts.
+ansible_python_interpreter: /usr/bin/python3
+
+# ---- Cluster connection ----
+# Path to kubeconfig on the master node.
+# kubeadm places this at /root/.kube/config after init.
+# Stays on the master — not copied to the management host.
+k8s_kubeconfig: /root/.kube/config
+
+# CIDR covering all cluster node IPs (used for NetworkPolicy ipBlock rules).
+# kube-apiserver uses hostNetwork so its webhook calls arrive from a node IP,
+# not from a kube-system pod IP — namespaceSelector alone is insufficient.
+k8s_node_cidr: 10.0.0.0/25
+
+
+# ---- MetalLB ----
+metallb_version: "0.15.3"
+metallb_namespace: metallb
+metallb_ip_pools:
+  - name: primary
+    addresses:
+      - 192.168.1.20-192.168.1.30     # update to your LoadBalancer IP range
+    auto_assign: true
+metallb_l2advertiments:
+  - name: primary
+    ip_addr_pools:
+      - primary
+    # node_selectors:              # optional — limit advertisement to specific nodes
+    #   - matchLabels:
+    #       kubernetes.io/hostname: node1.example.com
+    # interfaces:                  # optional — limit to specific NIC(s) per node
+    #   - eth0
+
+# rbacPrometheus creates ClusterRole/Binding so Prometheus can scrape metallb metrics.
+# ServiceMonitors are applied by deployments/monitoring/ after kube-prometheus-stack is deployed.
+metallb_values:
+  prometheus:
+    rbacPrometheus: true
+
+
+# ---- Pod Security Admission — namespace profiles ----
+# Controls the PSA labels applied to each platform namespace.
+# Profiles: privileged | baseline | restricted
+#
+# All three modes (enforce/warn/audit) are set to the same profile value.
+# privileged namespaces suppress warnings for intentional host-level access.
+# Everything else uses baseline (the cluster-wide enforce default).
+#
+# metallb speaker uses hostNetwork + NET_RAW — requires privileged
+# nfs-subdir provisioner requires host mount access — requires privileged
+# All others have no host-level access requirements — baseline is sufficient
+metallb_psa_profile: privileged
+agentgateway_psa_profile: baseline
+gateway_psa_profile: baseline
+cert_manager_psa_profile: baseline
+nfs_psa_profile: privileged
+vault_psa_profile: baseline
+
+
+# ---- Gateway API ----
+gateway_api_version: "1.5.0"
+agentgateway_version: "1.0.1"
+agentgateway_namespace: "agentgateway-system"
+agentgateway_control_plane_name: "agentgateway"
+
+# Default Gateway resource — created in the gateway_namespace after agentgateway is ready.
+# ListenerSets in other namespaces attach to this Gateway via parentRef.
+gateway_namespace: gateways
+gateway_name: default       # this is the helm deployment name, not to be confused with what the GatewayClassName will be
+gateway_class_name: "{{ gateway_name }}"
+
+# Will install the experimental features and enable use of BackendTLSPolicies
+gateway_experimental_features: false
+
+# ---- cert-manager ----
+cert_manager_version: "1.20.0"
+trust_manager_version: "0.16.0"
+cert_manager_namespace: cert-manager
+cert_manager_dns_zone: "example.com"           # DNS zone managed in Cloudflare
+cert_manager_email: "admin@example.com"        # ACME account registration email
+
+# Cloudflare API token for DNS01 challenges (Vault <env>/k8s-platform).
+cert_manager_cloudflare_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/k8s-platform', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.cloudflare_token }}"
+
+# EAB issuer credentials — only needed for an issuer with eab: true
+# (e.g. Sectigo); supply from Vault or an AWX credential.
+# cert_manager_eab_key_id:
+# cert_manager_eab_hmac_key:
+# cert_manager_eab_server:     "https://acme.enterprise.sectigo.com"
+
+# ---- cert-manager: PowerDNS DNS01 webhook ----
+# cert-manager has no built-in PowerDNS solver (unlike acme_sh's dns_pdns
+# challenge plugin) — deployed via the community webhook chart instead,
+# only when at least one issuer below uses solver: pdns. Using the actively
+# maintained zachomedia/cert-manager-webhook-pdns fork, not the original
+# lordofsystem chart (unpinned `:main` image tag, no chart release since
+# 2022) — see k8s-platform README for the comparison.
+cert_manager_pdns_webhook_version: "3.2.5"
+
+# Identifies this webhook's API group to cert-manager — must match the
+# groupName any solver: pdns issuer below references. Convention (from the
+# chart's own docs): a subdomain of something you own, not the literal
+# zone being validated.
+cert_manager_pdns_webhook_group_name: "acme.{{ cert_manager_dns_zone }}"
+
+# PowerDNS Authoritative HTTP API — same server/token acme_sh's dns_pdns
+# challenge already uses (mgcdrd.infrabase.acme_sh), and the same Vault
+# path (<env>/pdns) that ipa_server's DNS integration reads.
+cert_manager_pdns_url: "http://dns.example.com:8081"
+cert_manager_pdns_server_id: "localhost"
+cert_manager_pdns_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/pdns', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.api_key }}"
+cert_manager_pdns_ttl: 120
+
+# Zones the webhook is allowed to edit — the API token above can usually
+# edit every zone on the server, so this scopes what cert-manager itself
+# will touch (least privilege). Empty list = unrestricted. Trailing dot
+# required (PowerDNS zone-name convention).
+cert_manager_pdns_allowed_zones: []
+#   - "{{ cert_manager_dns_zone }}."
+
+# ---- cert-manager: Google Public CA ----
+# Google Public CA requires External Account Binding. The EAB key itself
+# is minted on demand via mgcdrd.infrasvc.google_publicca_eab (control-node
+# only, single-use, expires in 7 days unused) — NOT run automatically by
+# this playbook. See "Google Public CA" in the README for the one-time
+# mint step. These just read whatever that role last wrote to Vault.
+cert_manager_google_eab_kid: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/acme/google/k8s-platform', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.kid }}"
+cert_manager_google_eab_hmac_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/acme/google/k8s-platform', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.hmac_key }}"
+
+# ACME issuers to create. Each entry defines one ClusterIssuer.
+# solver: cloudflare  — DNS01 via Cloudflare (requires cert_manager_cloudflare_token)
+# solver: pdns        — DNS01 via PowerDNS's HTTP API (requires the
+#                       cert_manager_pdns_* vars above; per-issuer overrides:
+#                       pdns_url/pdns_server_id/pdns_ttl/pdns_allowed_zones)
+# solver: http01      — HTTP01 challenge
+# eab: true           — adds externalAccountBinding, independent of solver
+#                       above (required by Google Public CA, Sectigo, etc.)
+#                       — needs eab_key_id/eab_hmac_key on the issuer entry
+# preferred_chain     — optional: request a specific chain by root CN, e.g.
+#                       "GTS Root R1" for Google Public CA's shorter chain
+#                       instead of its GlobalSign cross-signed default
+cert_manager_acme_issuers:
+  - name: le-stage
+    email: "{{ cert_manager_email }}"
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    solver: cloudflare
+    dns_zone: "{{ cert_manager_dns_zone }}"
+  - name: le-prod
+    email: "{{ cert_manager_email }}"
+    server: https://acme-v02.api.letsencrypt.org/directory
+    solver: cloudflare
+    dns_zone: "{{ cert_manager_dns_zone }}"
+  # Uncomment for PowerDNS DNS01 instead of Cloudflare:
+  # - name: le-prod-pdns
+  #   email: "{{ cert_manager_email }}"
+  #   server: https://acme-v02.api.letsencrypt.org/directory
+  #   solver: pdns
+  #   dns_zone: "{{ cert_manager_dns_zone }}."   # trailing dot — PowerDNS zone name
+  # Uncomment for Google Public CA (mint the EAB key first — see README):
+  # - name: google-prod
+  #   email: "{{ cert_manager_email }}"
+  #   server: https://dv.acme-v02.api.pki.goog/directory
+  #   solver: pdns
+  #   dns_zone: "{{ cert_manager_dns_zone }}."
+  #   eab: true
+  #   eab_key_id: "{{ cert_manager_google_eab_kid }}"
+  #   eab_hmac_key: "{{ cert_manager_google_eab_hmac_key }}"
+  #   preferred_chain: "GTS Root R1"
+  # Uncomment to add an HTTP01 + EAB issuer (e.g. Sectigo):
+  # - name: sectigo-prod
+  #   email: "{{ cert_manager_email }}"
+  #   server: "{{ cert_manager_eab_server }}"
+  #   solver: http01
+  #   eab: true
+  #   eab_key_id:   "{{ cert_manager_eab_key_id }}"
+  #   eab_hmac_key: "{{ cert_manager_eab_hmac_key }}"
+  #   http01_service_type: ClusterIP
+
+# PEM-encoded CA certificate for LDAP TLS verification (ldaps://).
+# Distributed cluster-wide via the ipa-ca-bundle trust-manager Bundle.
+# Replace with your LDAP provider's CA cert. For FreeIPA:
+#   curl http://<ipa-server>/ipa/config/ca.crt  (first cert in the output)
+cert_manager_ldap_ca_cert: |
+  -----BEGIN CERTIFICATE-----
+  MIIDoDCCAoigAwIBAgIBATANBgkqhkiG9w0BAQsFADA9MRswGQYDVQQKDBJMQUIu
+  UFJPVkVOWkFXVC5ERVYxHjAcBgNVBAMMFUNlcnRpZmljYXRlIEF1dGhvcml0eTAe
+  Fw0yMjAzMTgxNzU2MTNaFw00MjAzMTgxNzU2MTNaMD0xGzAZBgNVBAoMEkxBQi5Q
+  Uk9WRU5aQVdULkRFVjEeMBwGA1UEAwwVQ2VydGlmaWNhdGUgQXV0aG9yaXR5MIIB
+  IjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuQhLHkZ5fTW0+b/bF9wCK5nm
+  4y1Wx/m6ovnxK/5hnD1DLguimAmQZHp6u6BAzbWg8KV5mPWleFlZPgIoLRYIHL13
+  QaSHTa5wkvQ1L650d6QgUNMBCFqcGim1rk97QmkRdADn+7paaGlYMCHm2t0D9XLe
+  eoU7DI4OtckmOdNqrHwFtufjQOV6pG71QxvsfU/IBQe77cukIti8PBUXAQgwz66d
+  JHaTYHoRWPgMxhNvFH8RhXWlGMWI1Fg2EYJ3y9l8VMiS76O3+31AJ+IVRzvDQbZw
+  yYcOq/0f+25uLNh53fBxeDv7wxbpqXOFbEvq5YTbbBO8P5U9HeaV52W2+XUdQQID
+  AQABo4GqMIGnMB8GA1UdIwQYMBaAFKjsiqeL0dCzMi2F0IruVKiDEiLnMA8GA1Ud
+  EwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgHGMB0GA1UdDgQWBBSo7Iqni9HQszIt
+  hdCK7lSogxIi5zBEBggrBgEFBQcBAQQ4MDYwNAYIKwYBBQUHMAGGKGh0dHA6Ly9p
+  cGEtY2EubGFiLnByb3Zlbnphd3QuZGV2L2NhL29jc3AwDQYJKoZIhvcNAQELBQAD
+  ggEBAKwQp7Gu4iapnTUnZPnH7GVAr7QOecrb4q24g19orIxYQ1ArPI0bfWFJ7cCz
+  gkO3skcN0rxs5Odwky47S20X0qTtHpUOlYSZuIOSVZzXdDymfF4nMzz/hLyWfGif
+  2zcv5Jx69WFB9WNmMe7XAkplQNDOUa1YiGCpaem40eF1/YkRyjUM6wHLWJBvlp0n
+  izKYA7PfjZz8pdkNrok3FBXAEbraq6wJm+JkwcQh9kmnOwIj6DeDaf3w6KLZ3uUi
+  pA4Z/DaUvVzsy9N5WNbU+ojeEX11hmDagTUGtU+UXEPjw0pXlYv68OEK+fCCzkM2
+  BzkuT0yYu41BC3OYSbC42VUoDx4=
+  -----END CERTIFICATE-----
+
+cert_manager_values:
+  crds:
+    enabled: true
+  config:
+    enableGatewayAPI: true
+    enableGatewayAPIListenerSet: true
+    featureGates:
+      ListenerSets: true
+  extraArgs:
+    - --dns01-recursive-nameservers-only
+    - --dns01-recursive-nameservers=8.8.8.8:53,1.1.1.1:53
+  # Expose metrics on port 9402 — ServiceMonitor applied by deployments/monitoring/
+  prometheus:
+    enabled: true
+
+
+# ---- NFS provisioner ----
+nfs_provisioner_chart_version: "4.0.18"
+nfs_deployment_name: "truenas"
+nfs_namespace: "nfs-provisioner"
+# nfs_server comes from group_vars/all/all.yml (real IP, not FQDN — NFS
+# mounts shouldn't depend on DNS being up).
+nfs_share_path: "/exports/k8s/provisioner"  # NFS export path
+nfs_mountopts:
+  - "vers=3"
+nfs_storageClass_create: true
+nfs_storageClass_name: truenas
+nfs_storageClass_defaultClass: true
+nfs_storageClass_archiveOnDelete: true
+nfs_storageClass_reclaimPolicy: Retain
+
+
+# ---- Vault (Raft storage) ----
+vault_chart_version: "0.32.0"
+vault_namespace: vault
+vault_replicas: 3
+
+# External hostname (vault_ext_fqdn, set in group_vars/k8s/k8s.yml) — used in
+# the vault TLS cert SAN and Gateway ListenerSet/HTTPRoute. cert-manager issues
+# a public cert for this name via vault_ext_issuer.
+vault_ext_issuer: le-prod
+vault_ingress_tls_secret: vault-ingress-tls
+
+# Static NFS PersistentVolumes for Raft data (one per replica).
+# Directories must exist on TrueNAS before running this playbook:
+#   vault_nfs_path/vault-0, vault_nfs_path/vault-1, ...
+vault_data_size: 10Gi
+vault_data_storageclass: manual
+vault_nfs_server: "{{ nfs_server }}"
+vault_nfs_path: "/mnt/storage/k8s/manual/vault"   # NFS path — subdirs vault-0..N must exist
+vault_nfs_mountopts:
+  - nfsvers=3
+
+# Vault telemetry — unauthenticated Prometheus metrics at /v1/sys/metrics
+# ServiceMonitor applied by deployments/monitoring/ after kube-prometheus-stack is deployed.
+vault_telemetry_retention: "30s"
+
+# ---- Monitoring ----
+# monitoring_namespace must be defined here so Phase 6 (netpol) can reference it.
+# The monitoring namespace is created by that deployment — run it before --tags netpol.
+monitoring_namespace: monitoring
+
+
+# ---- RBAC bootstrap ----
+# Maps OIDC groups (synced from LDAP via Keycloak) to Kubernetes ClusterRoles.
+# Group names must match exactly what Keycloak puts in the 'groups' JWT claim
+# (the group-membership mapper with full.path: false returns bare names).
+#
+# Built-in ClusterRoles: cluster-admin, admin, edit, view
+k8s_oidc_group_bindings:
+  - group: k8s-admins       # LDAP group → Keycloak lab realm → k8s
+    cluster_role: cluster-admin
+  - group: k8s-developers
+    cluster_role: edit
+  - group: k8s-viewers
+    cluster_role: view

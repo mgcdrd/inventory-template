@@ -1,0 +1,23 @@
+---
+# Non-secret configuration for deployments/mokey-ipa, which runs on the IPA
+# primary. vault_ipa_admin_password comes from group_vars/ipa/.
+
+mokey_hostname: "mokey.{{ domain }}"
+
+# Lab IPA uses a self-signed CA, same reasoning as deployments/ipa's
+# ipa_server_validate_certs.
+mokey_ipa_validate_certs: false
+
+# IPA role/privilege granted directly to mokey's own service principal
+# (there's no delegated "manager" account here — mokey's setup docs kinit
+# and fetch its own keytab as admin).
+mokey_ipa_role: "Mokey User Manager"
+
+# Alias principal mokey's own config (mokey.toml's ktuser) authenticates
+# as — keeps the config host-independent. Matches mokey.toml.sample.
+mokey_ipa_principal_alias: "mokey/mokey"
+
+# ipa-getkeytab ROTATES the key on every fetch. Only set true to
+# deliberately reissue — the mokey pod must be restarted immediately after
+# against the refreshed Vault secret.
+mokey_ipa_force_rotate: false

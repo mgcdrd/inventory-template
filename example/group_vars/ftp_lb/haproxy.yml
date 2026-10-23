@@ -1,0 +1,77 @@
+---
+
+# haproxy + keepalived in front of the vsftp group — see deployments/haproxy-lb.
+
+haproxy_global:
+  logs:
+    - target:   /dev/log
+      facility: local0
+      level:    notice
+  stats:
+    socket:
+      - path:  /run/haproxy/admin.sock
+        mode:  "660"
+        level: admin
+
+haproxy_defaults:
+  - block_name: tcp
+    mode: tcp
+    log:  global
+    options:
+      - tcplog
+      - dontlognull
+    timeout_connect: 5000
+    # FTP transfers can run long — a short client/server timeout here would
+    # kill large uploads/downloads mid-transfer.
+    timeout_client:  300000
+    timeout_server:  300000
+
+haproxy_frontends:
+  - block_name: ftp_control
+    mode: tcp
+    options:
+      - tcplog
+    log: global
+    binds:
+      - "*:21"
+    default_backend: ftp_control_servers
+
+  - block_name: ftp_data
+    mode: tcp
+    options:
+      - tcplog
+    log: global
+    binds:
+      - "*:{{ vsftp_pasv_min_port }}-{{ vsftp_pasv_max_port }}"
+    default_backend: ftp_data_servers
+
+haproxy_backends:
+  - block_name: ftp_control_servers
+    mode: tcp
+    servers:
+      - "ftp1  ftp1.example.com:21 check"
+      - "ftp2  ftp2.example.com:21 check backup"
+
+  - block_name: ftp_data_servers
+    mode: tcp
+    servers:
+      # No port specified — with a ranged frontend bind, this makes haproxy
+      # forward each connection to whatever port it arrived on. Required for
+      # proxying the whole passive port range through a single backend line.
+      - "ftp1  ftp1.example.com check"
+      - "ftp2  ftp2.example.com check backup"
+
+
+# ---- keepalived ----
+
+keepalived_vip_for:
+  - ftp
+
+keepalived_vrrp_instances:
+  - name: VI_FTP_LB
+    master_node: ftplb1.example.com
+    backup_nodes:
+      - ftplb2.example.com
+    # Same VIP vsftpd advertises (vsftp_pasv_address, group_vars/ftp/ftp.yml).
+    virt_ip:
+      - "{{ vsftp_pasv_address }}/24"

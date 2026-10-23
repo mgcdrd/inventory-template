@@ -1,0 +1,136 @@
+---
+# nginx + keepalived reverse proxy cluster — see deployments/webproxy.
+# Role variables are documented in the mgcdrd.infrasvc.nginx,
+# mgcdrd.infrasvc.keepalived and mgcdrd.infrabase.{acme_sh,fail2ban} READMEs.
+
+# ---- keepalived ----
+keepalived_vip_for:
+  - webproxy
+
+keepalived_vrrp_instances:
+  - name: VI_WEBPROXY
+    master_node: proxy1.example.com
+    backup_nodes:
+      - proxy2.example.com
+    # Placeholder — must be a real, free IP on this cluster's network
+    # before first run.
+    virt_ip:
+      - 192.168.1.50/24
+
+# ---- nginx ----
+# ssl_scripting (self-signed) is the default: safe out of the box, no
+# external dependency. Switch to acme_sh once a real domain/DNS record
+# exists for the VIP (see the commented block below).
+nginx_ssl_enable: true
+nginx_ssl_provider: ssl_scripting
+
+nginx_ssl_scripting:
+  base_dir: /etc/nginx/ssl_scripting
+
+# No server blocks defined yet — this deployment stands up the proxy
+# infrastructure (nginx + keepalived VIP + SSL), not any specific site.
+# Schema and the devops-owned proxy file split are in the nginx role README.
+nginx_server_blocks: []
+
+nginx_http_block:
+  add_mime: true
+  force_80_redirect: true
+  hsts_max_age: 63072000
+  # Public-tier user-agent blocking (scanners, scrapers, empty UA); list in the
+  # nginx role's nginx_badagent_list. Internal/trusted clients are exempt.
+  block_badagents: true
+  gzip_comp_lvl: 6
+  gzip_buffers: "4 8k"
+  client_body_buffer_size: 64k
+  client_header_buffer_size: 8k
+  large_client_header_buffers: "4 8k"
+  # default_443 with reject_handshake refuses the TLS handshake for unknown or
+  # missing SNI (including requests straight to the IP): no certificate is
+  # served, and nginx starts without a cert before any server block exists.
+  default_443:
+    enabled: true
+    reject_handshake: true
+
+# Ships a copy of every server block's access/error log to the central
+# syslog server (local6 bucket) for long-term retention, in addition to the
+# nginx->Loki path via grafana_alloy. Takes effect once nginx_server_blocks
+# is non-empty — shared_configs are included per server block.
+nginx_shared_configs:
+  # TLS hardening shared by every server block. The certificate itself is set
+  # per server block (static <nginx_ssl_cert_dir>/<name>.crt|.key).
+  ssl:
+    ssl_protos:  "TLSv1.2 TLSv1.3"
+    ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+  logging:
+    - type:   access_log
+      path:   "syslog:server=unix:/dev/log,facility=local6,tag=nginx_access"
+      format: main
+    - type:   error_log
+      path:   "syslog:server=unix:/dev/log,facility=local6,tag=nginx_error"
+      format: warn
+
+# Client tiers and rate limits default sensibly (internal = RFC1918, never
+# limited; public = everyone else). Override per cluster, e.g.:
+# nginx_trusted_cidrs: [203.0.113.0/27]
+# nginx_real_ip_from: [192.0.2.10]     # ONLY if a load balancer/CDN is in front
+# nginx_rate_limits: {...}
+
+# GeoIP2 + geoblocking (public tier only). Needs nginx-mod-http-geoip2 in the
+# host's repos; the MaxMind key comes from Vault at <env>/maxmind.
+nginx_geoip2_enabled: false
+# nginx_geoblock_countries: [CN, RU, KP, IR, BY, SY, CU]
+# nginx_geoip2_account_id:  "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/maxmind', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.account_id }}"
+# nginx_geoip2_license_key: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/maxmind', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.license_key }}"
+
+# fail2ban: bans clients that hit the rate limits, probe for scanner paths, or
+# burst 400/403/405/444 responses. Opt-in; the play in site.yml is skipped
+# unless this is true. Add trusted external ranges to fail2ban_ignoreip (and
+# nginx_real_ip_from if a balancer is in front).
+fail2ban_enabled: false
+fail2ban_presets: [nginx]
+fail2ban_recidive_enabled: true
+# fail2ban_ignoreip: [127.0.0.1/8, "::1", 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+
+# ---- acme_sh (only with nginx_ssl_provider: acme_sh) ----
+# Real DNS-01 certs via PowerDNS. Set nginx_ssl_provider: acme_sh above and
+# uncomment. The issuer host is a literal hostname — never groups.webproxy |
+# first, since inventory reordering must never silently move who issues.
+# Centralize issuance on one node and fan the result out via Vault to stay
+# inside Let's Encrypt's duplicate-cert limit (acme_sh README, "ISSUER + VAULT
+# FAN-OUT"). Reuses the <env>/acme and <env>/pdns secrets deployments/foreman wires.
+#
+# acme_sh_email:     "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/acme', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.email }}"
+# acme_sh_pdns_token: "{{ lookup('community.hashi_vault.vault_kv2_get', vault_kv_env + '/pdns', engine_mount_point=vault_kv_infra_mount, url=vault_addr).secret.api_key }}"
+# acme_sh_ca:           letsencrypt
+# acme_sh_pdns_url:     "http://dns.{{ domain }}:8081"
+# acme_sh_flat_ssl_dir: /etc/nginx/ssl
+# acme_sh_issuer_host:  proxy1.example.com
+# acme_sh_vault_kv_enabled: true
+# acme_sh_vault_kv_mount: "{{ vault_kv_infra_mount }}"
+# acme_sh_vault_kv_path_prefix: "{{ vault_kv_env }}/webproxy/certs"
+# acme_sh_vault_deploy_reload_cmd: "systemctl reload nginx"
+# acme_sh_certs:
+#   - domains:
+#       - "app1.{{ domain }}"
+#       - "app2.{{ domain }}"    # SAN on the same cert as app1
+#     challenge: dns_pdns
+#     reload_cmd: "/usr/local/sbin/acme-sh-vault-push.sh app1.{{ domain }} && systemctl reload nginx"
+
+# ---- Proxy sync (opt-in) ----
+# Nodes pull the devops-owned proxy files from S3 instead of anyone editing
+# them on-node; replaces nginx_proxy_files_group and the sudoers grant. See the
+# nginx README, "Proxy sync", for the contract and prerequisites.
+# nginx_proxy_sync_enabled: true
+# nginx_proxy_sync_interval: 5min
+# nginx_proxy_sync_s3_endpoint: https://s3.example.com:9000
+# nginx_proxy_sync_s3_bucket: proxy
+# nginx_proxy_sync_s3_prefix: webproxy
+
+# Without proxy sync: group the devops service account logs in with, and the
+# sudoers grant it needs for nginx -t / reload (skipped unless sudoers_rules is set).
+# nginx_proxy_files_group: svc-webproxy-devops
+# sudoers_rules_group: webproxy
+# sudoers_rules:
+#   - name: nginx-test-restart
+#     principals: [svc-webproxy-devops]
+#     commands: [/usr/sbin/nginx -t, /usr/sbin/nginx -s reload]

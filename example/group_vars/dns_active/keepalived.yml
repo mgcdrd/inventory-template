@@ -1,0 +1,45 @@
+---
+
+# ---- keepalived — VIP between dns1 and dns2 ----
+#
+# Weight design (MASTER starts at 210, BACKUP starts at 90):
+#   check_dns fails alone  → MASTER: 210-130=80  < 90 → failover
+#   check_galera fails alone → MASTER: 210-50=160 > 90 → no failover (recoverable)
+#   both fail              → MASTER: 210-180=30  < 90 → failover
+
+keepalived_vip_for: []
+
+keepalived_vrrp_scripts:
+  - name:      check_dns
+    script:    /etc/keepalived/check_dns.sh
+    template:  pdns/check_dns.sh.j2
+    interval:  3
+    fall:      2
+    rise:      2
+    weight:    -130
+    init_fail: false
+    user:      root
+    group:     root
+
+  - name:      check_galera
+    script:    /etc/keepalived/check_galera.sh
+    template:  pdns/check_galera.sh.j2
+    interval:  5
+    fall:      2
+    rise:      3
+    weight:    -50
+    init_fail: false
+    user:      root
+    group:     root
+
+keepalived_vrrp_instances:
+  - name:        DNS_VIP
+    master_node: dns1.example.com
+    backup_nodes:
+      - dns2.example.com
+    virt_ip:
+      - 192.168.1.10              # DNS VIP — must be free on your network
+    vrrp_scripts:
+      extra:
+        - name: check_dns
+        - name: check_galera
